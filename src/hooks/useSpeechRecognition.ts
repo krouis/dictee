@@ -130,14 +130,15 @@ export function useSpeechRecognition(
       if (interimTranscript) setTranscript(interimTranscript);
 
       if (finalTranscripts.length > 0) {
-        setTranscript(finalTranscripts[0]);
         const parsed = parseAutonomousSpellingAlternatives(finalTranscripts);
         if (parsed) {
+          setTranscript(parsed.transcript);
           setResult(parsed);
           setStatus(options.continuous ? 'listening' : 'result');
           setError('');
           onResult?.(parsed);
         } else {
+          setTranscript(finalTranscripts[finalTranscripts.length - 1]);
           setResult(null);
           setStatus(options.continuous ? 'listening' : 'error');
           setError(options.continuous

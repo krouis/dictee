@@ -211,16 +211,33 @@ function parseFrenchSpellingTranscriptWithOptions(
   return parsed ? { transcript, parsed } : null;
 }
 
+function pickBestParsedSpelling(
+  transcripts: string[],
+  parser: (transcript: string) => ParsedSpelling | null,
+): ParsedSpelling | null {
+  let best: ParsedSpelling | null = null;
+  let bestScore = -1;
+
+  transcripts.forEach((transcript, index) => {
+    const parsed = parser(transcript);
+    if (!parsed) return;
+
+    const score = parsed.parsed.length * 1000 + transcript.length + index;
+    if (score > bestScore) {
+      best = parsed;
+      bestScore = score;
+    }
+  });
+
+  return best;
+}
+
 export function parseFrenchSpellingTranscript(transcript: string): ParsedSpelling | null {
   return parseFrenchSpellingTranscriptWithOptions(transcript);
 }
 
 export function parseFrenchSpellingAlternatives(transcripts: string[]): ParsedSpelling | null {
-  for (const transcript of transcripts) {
-    const parsed = parseFrenchSpellingTranscript(transcript);
-    if (parsed) return parsed;
-  }
-  return null;
+  return pickBestParsedSpelling(transcripts, parseFrenchSpellingTranscript);
 }
 
 export function parseAutonomousSpellingTranscript(transcript: string): ParsedSpelling | null {
@@ -228,11 +245,7 @@ export function parseAutonomousSpellingTranscript(transcript: string): ParsedSpe
 }
 
 export function parseAutonomousSpellingAlternatives(transcripts: string[]): ParsedSpelling | null {
-  for (const transcript of transcripts) {
-    const parsed = parseAutonomousSpellingTranscript(transcript);
-    if (parsed) return parsed;
-  }
-  return null;
+  return pickBestParsedSpelling(transcripts, parseAutonomousSpellingTranscript);
 }
 
 export function gradeSpelledCharacter(expected: string, actual: string): CharacterGrade {
@@ -246,6 +259,21 @@ export function gradeSpelledCharacter(expected: string, actual: string): Charact
 
 export function splitExpectedCharacters(expected: string): string[] {
   return Array.from(expected);
+}
+
+export function buildOralSlotsFromParsed(
+  parsed: string,
+  expectedCharacters: string[],
+  transcript?: string,
+): { expected: string; actual: string; transcript?: string; grade: CharacterGrade }[] {
+  return Array.from(parsed)
+    .slice(0, expectedCharacters.length)
+    .map((actual, index) => ({
+      expected: expectedCharacters[index] ?? '',
+      actual,
+      transcript,
+      grade: gradeSpelledCharacter(expectedCharacters[index] ?? '', actual),
+    }));
 }
 
 export function buildFrenchSpellingPhrases(expected: string): string[] {

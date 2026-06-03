@@ -37,8 +37,8 @@ test('parseFrenchSpellingTranscript fails instead of guessing unknown tokens', (
   assert.equal(parseFrenchSpellingTranscript('a complètement inconnu'), null);
 });
 
-test('parseFrenchSpellingAlternatives returns the first parseable transcript', () => {
-  assert.deepEqual(parseFrenchSpellingAlternatives(['inconnu', 'bé o enne']), {
+test('parseFrenchSpellingAlternatives returns the most complete parseable transcript', () => {
+  assert.deepEqual(parseFrenchSpellingAlternatives(['bé', 'bé o', 'bé o enne']), {
     transcript: 'bé o enne',
     parsed: 'bon',
   });
@@ -50,10 +50,10 @@ test('parseAutonomousSpellingTranscript accepts explicit letter names but reject
   assert.equal(parseAutonomousSpellingTranscript('MAIF'), null);
 });
 
-test('parseAutonomousSpellingAlternatives ignores phonetic words and uses spelled alternatives', () => {
-  assert.deepEqual(parseAutonomousSpellingAlternatives(['maison', 'em a i esse o n']), {
-    transcript: 'em a i esse o n',
-    parsed: 'maison',
+test('parseAutonomousSpellingAlternatives prefers the most complete spelled transcript', () => {
+  assert.deepEqual(parseAutonomousSpellingAlternatives(['a', 'a bé', 'a bé cé']), {
+    transcript: 'a bé cé',
+    parsed: 'abc',
   });
 });
 

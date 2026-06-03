@@ -12,9 +12,8 @@ import { resolveAnswerTimeSeconds } from '../timing';
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 import {
   buildFrenchSpellingPhrases,
-  gradeSpelledCharacter,
+  buildOralSlotsFromParsed,
   splitExpectedCharacters,
-  type CharacterGrade,
   type ParsedSpelling,
 } from '../spellingRecognition';
 
@@ -33,7 +32,7 @@ type OralSlot = {
   expected?: string;
   actual: string;
   transcript?: string;
-  grade?: CharacterGrade;
+  grade?: 'correct' | 'almost_correct' | 'incorrect';
 };
 
 function formatTime(s: number) {
@@ -46,7 +45,7 @@ function displayChar(value: string | undefined) {
   return value;
 }
 
-const SLOT_STYLE: Record<CharacterGrade | 'empty', string> = {
+const SLOT_STYLE: Record<'correct' | 'almost_correct' | 'incorrect' | 'empty', string> = {
   correct: 'bg-green-100 border-green-300 text-green-800',
   almost_correct: 'bg-amber-100 border-amber-300 text-amber-800',
   incorrect: 'bg-red-100 border-red-300 text-red-800',
@@ -76,19 +75,7 @@ export default function DicteeScreen({ word, wordIndex, totalWords, config, spea
   );
 
   const handleLetterResult = useCallback((result: ParsedSpelling) => {
-    setOralSlots((slots) => {
-      const next = [...slots];
-      for (const actual of Array.from(result.parsed)) {
-        const expected = expectedCharacters[next.length];
-        next.push({
-          expected,
-          actual,
-          transcript: result.transcript,
-          grade: expected ? gradeSpelledCharacter(expected, actual) : 'incorrect',
-        });
-      }
-      return next;
-    });
+    setOralSlots(buildOralSlotsFromParsed(result.parsed, expectedCharacters, result.transcript));
     setOralNotice('');
   }, [expectedCharacters]);
 
