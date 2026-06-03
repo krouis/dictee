@@ -28,9 +28,19 @@ No account, no backend, no paid dependency.
 ```bash
 npm install
 npm run dev       # http://localhost:5173
+npm test          # build and run automated tests
 npm run build     # production build → dist/
 npm run preview   # preview the production build locally
 ```
+
+## Testing
+
+The test suite uses Node's built-in test runner. Test files live next to the source as `*.test.ts`; `scripts/build-tests.mjs` bundles them into `.test-build/` before execution.
+
+Current coverage focuses on:
+
+- PWA manifest icon paths staying relative, so GitHub Pages sub-path installs resolve icons correctly.
+- Dictation speech-run cancellation, so repeated “Réécouter” clicks cannot leave older speech loops racing the latest one.
 
 ## Deployment
 
@@ -44,6 +54,8 @@ Every push to `main` triggers the [GitHub Actions workflow](.github/workflows/de
 *Settings → Pages → Source* and select **GitHub Actions**.
 
 If you use a custom domain pointing to the repo root, remove the `VITE_BASE_URL` env line from the workflow so the app builds with base `/`.
+
+PWA manifest icons and the favicon use relative public paths so the app works both at `/` and under the GitHub Pages `/<repo-name>/` sub-path.
 
 ## App flow
 

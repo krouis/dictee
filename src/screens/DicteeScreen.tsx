@@ -2,6 +2,12 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import type { WordEntry, DicteeConfig } from '../types';
 import type { SpeakOptions } from '../hooks/useSpeech';
 import { stripAccents, normaliseBasic } from '../grading';
+import {
+  cancelSpeechRun,
+  createSpeechRunToken,
+  isSpeechRunCancelled,
+  type SpeechRunToken,
+} from '../speechRun';
 
 type Props = {
   word: WordEntry;
@@ -25,36 +31,40 @@ export default function DicteeScreen({ word, wordIndex, totalWords, config, spea
   const [revealed, setRevealed] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const answerRef = useRef('');
+  const speechRunRef = useRef<SpeechRunToken | null>(null);
   answerRef.current = answer;
 
   // Speak the current word, then start the timer.
-  const doSpeak = useCallback(async (cancelled: { value: boolean }) => {
+  const doSpeak = useCallback(async (token: SpeechRunToken) => {
     setPhase('speaking');
     for (let i = 0; i < config.repetitions; i++) {
-      if (cancelled.value) return;
+      if (isSpeechRunCancelled(token)) return;
       await speak(word.expected, {
         rate: config.speechRate,
         voiceURI: config.voiceURI,
         language: config.language,
       });
-      if (cancelled.value) return;
+      if (isSpeechRunCancelled(token)) return;
       if (i < config.repetitions - 1) {
         await new Promise<void>((r) => setTimeout(r, 500));
       }
     }
-    if (!cancelled.value) {
+    if (!isSpeechRunCancelled(token) && speechRunRef.current === token) {
       setTimeLeft(config.answerTimeSeconds);
       setPhase('answering');
     }
   }, [word.expected, config, speak]);
 
   useEffect(() => {
-    const cancelled = { value: false };
+    cancelSpeechRun(speechRunRef.current);
+    const token = createSpeechRunToken();
+    speechRunRef.current = token;
     setAnswer('');
     setRevealed(false);
-    doSpeak(cancelled);
+    doSpeak(token);
     return () => {
-      cancelled.value = true;
+      cancelSpeechRun(token);
+      if (speechRunRef.current === token) speechRunRef.current = null;
       window.speechSynthesis?.cancel();
     };
   }, [word.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -83,10 +93,11 @@ export default function DicteeScreen({ word, wordIndex, totalWords, config, spea
   }
 
   function handleRelisten() {
-    const cancelled = { value: false };
-    doSpeak(cancelled);
+    cancelSpeechRun(speechRunRef.current);
+    const token = createSpeechRunToken();
+    speechRunRef.current = token;
+    doSpeak(token);
     if (config.answerTimeSeconds > 0) setTimeLeft(config.answerTimeSeconds);
-    return () => { cancelled.value = true; };
   }
 
   function handlePause() {
