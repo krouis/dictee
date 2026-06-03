@@ -1,5 +1,11 @@
 # Dictée Libre ✏️
 
+[![Deploy to GitHub Pages](https://github.com/krouis/dictee/actions/workflows/deploy.yml/badge.svg?branch=main)](https://github.com/krouis/dictee/actions/workflows/deploy.yml)
+[![W3C HTML](https://img.shields.io/badge/W3C-HTML%20check-blue)](https://validator.w3.org/nu/?doc=https%3A%2F%2Fkrouis.github.io%2Fdictee%2F)
+[![W3C CSS](https://img.shields.io/badge/W3C-CSS%20check-blue)](https://jigsaw.w3.org/css-validator/validator?uri=https%3A%2F%2Fkrouis.github.io%2Fdictee%2F&profile=css3svg&usermedium=all&warning=1&vextwarning=&lang=en)
+[![W3C Links](https://img.shields.io/badge/W3C-link%20check-blue)](https://validator.w3.org/checklink?uri=https%3A%2F%2Fkrouis.github.io%2Fdictee%2F&hide_type=all&recursive=on&check=Check)
+[![W3C i18n](https://img.shields.io/badge/W3C-i18n%20check-blue)](https://validator.w3.org/i18n-checker/check?uri=https%3A%2F%2Fkrouis.github.io%2Fdictee%2F)
+
 A free, offline-first, mobile-friendly Progressive Web App for French spelling practice.  
 No account, no backend, no paid dependency.
 
@@ -49,8 +55,9 @@ Current coverage focuses on:
 Every push to `main` triggers the [GitHub Actions workflow](.github/workflows/deploy.yml) which:
 
 1. Installs dependencies with `npm ci`
-2. Builds with `VITE_BASE_URL=/<repo-name>/` so asset paths are correct under the GitHub Pages sub-path
-3. Uploads `dist/` to GitHub Pages via the official `actions/deploy-pages` action
+2. Runs `npm test`
+3. Builds with `VITE_BASE_URL=/<repo-name>/` so asset paths are correct under the GitHub Pages sub-path
+4. Uploads `dist/` to GitHub Pages via the official `actions/deploy-pages` action
 
 **One-time setup** — in your repository go to  
 *Settings → Pages → Source* and select **GitHub Actions**.
