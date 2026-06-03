@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { DicteeConfig } from '../types';
+import type { AnswerTimeSetting, DicteeConfig } from '../types';
 
 type Props = {
   voices: SpeechSynthesisVoice[];
@@ -14,8 +14,9 @@ const TIME_OPTIONS = [
   { label: '10 s', value: 10 },
   { label: '15 s', value: 15 },
   { label: '20 s', value: 20 },
+  { label: 'Adaptatif', value: 'adaptive' },
   { label: 'Manuel', value: 0 },
-];
+] satisfies { label: string; value: AnswerTimeSetting }[];
 
 const RATE_OPTIONS = [
   { label: 'Lent', value: 0.7 },

@@ -6,7 +6,7 @@ No account, no backend, no paid dependency.
 ## Features
 
 - Enter any word list (one word or phrase per line)
-- Configurable repetitions (1–3×), answer timer (5–20 s or manual), speech rate, and voice
+- Configurable repetitions (1–3×), fixed/adaptive/manual answer timer, speech rate, and voice
 - Full keyboard mode **or** oral/self-grading mode for devices without keyboards (smart displays, tablets)
 - Pastel colour-coded correction: correct · accent issue · incorrect
 - Replay only missed words until every word has been written correctly at least once
@@ -41,6 +41,7 @@ Current coverage focuses on:
 
 - PWA manifest icon paths staying relative, so GitHub Pages sub-path installs resolve icons correctly.
 - Dictation speech-run cancellation, so repeated “Réécouter” clicks cannot leave older speech loops racing the latest one.
+- Adaptive answer timing, including short-word minimums, phrase scaling, and the long-sentence cap.
 
 ## Deployment
 

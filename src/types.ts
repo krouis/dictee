@@ -12,9 +12,11 @@ export type GradeStatus = 'correct' | 'almost_correct' | 'incorrect';
 
 export type WordEntry = { id: string; expected: string };
 
+export type AnswerTimeSetting = 0 | 5 | 10 | 15 | 20 | 'adaptive';
+
 export type DicteeConfig = {
   repetitions: 1 | 2 | 3;
-  answerTimeSeconds: number; // 0 = manual Next button
+  answerTimeSeconds: AnswerTimeSetting; // 0 = manual Next button
   speechRate: number;
   voiceURI?: string;
   language: string;

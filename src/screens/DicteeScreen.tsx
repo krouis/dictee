@@ -8,6 +8,7 @@ import {
   isSpeechRunCancelled,
   type SpeechRunToken,
 } from '../speechRun';
+import { resolveAnswerTimeSeconds } from '../timing';
 
 type Props = {
   word: WordEntry;
@@ -25,8 +26,9 @@ function formatTime(s: number) {
 }
 
 export default function DicteeScreen({ word, wordIndex, totalWords, config, speak, onAnswer }: Props) {
+  const answerTimeSeconds = resolveAnswerTimeSeconds(config.answerTimeSeconds, word.expected);
   const [phase, setPhase] = useState<Phase>('speaking');
-  const [timeLeft, setTimeLeft] = useState(config.answerTimeSeconds);
+  const [timeLeft, setTimeLeft] = useState(answerTimeSeconds);
   const [answer, setAnswer] = useState('');
   const [revealed, setRevealed] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -50,10 +52,10 @@ export default function DicteeScreen({ word, wordIndex, totalWords, config, spea
       }
     }
     if (!isSpeechRunCancelled(token) && speechRunRef.current === token) {
-      setTimeLeft(config.answerTimeSeconds);
+      setTimeLeft(answerTimeSeconds);
       setPhase('answering');
     }
-  }, [word.expected, config, speak]);
+  }, [word.expected, config, speak, answerTimeSeconds]);
 
   useEffect(() => {
     cancelSpeechRun(speechRunRef.current);
@@ -61,6 +63,7 @@ export default function DicteeScreen({ word, wordIndex, totalWords, config, spea
     speechRunRef.current = token;
     setAnswer('');
     setRevealed(false);
+    setTimeLeft(answerTimeSeconds);
     doSpeak(token);
     return () => {
       cancelSpeechRun(token);
@@ -78,14 +81,14 @@ export default function DicteeScreen({ word, wordIndex, totalWords, config, spea
 
   // Countdown timer.
   useEffect(() => {
-    if (phase !== 'answering' || config.answerTimeSeconds === 0) return;
+    if (phase !== 'answering' || answerTimeSeconds === 0) return;
     if (timeLeft <= 0) {
       onAnswer(word.id, answerRef.current);
       return;
     }
     const id = setTimeout(() => setTimeLeft((t) => t - 1), 1000);
     return () => clearTimeout(id);
-  }, [phase, timeLeft, config.answerTimeSeconds]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [phase, timeLeft, answerTimeSeconds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleSubmit() {
     window.speechSynthesis?.cancel();
@@ -97,7 +100,7 @@ export default function DicteeScreen({ word, wordIndex, totalWords, config, spea
     const token = createSpeechRunToken();
     speechRunRef.current = token;
     doSpeak(token);
-    if (config.answerTimeSeconds > 0) setTimeLeft(config.answerTimeSeconds);
+    if (answerTimeSeconds > 0) setTimeLeft(answerTimeSeconds);
   }
 
   function handlePause() {
@@ -110,7 +113,7 @@ export default function DicteeScreen({ word, wordIndex, totalWords, config, spea
     setPhase('answering');
   }
 
-  const timerPct = config.answerTimeSeconds > 0 ? timeLeft / config.answerTimeSeconds : 1;
+  const timerPct = answerTimeSeconds > 0 ? timeLeft / answerTimeSeconds : 1;
   const timerColor = timerPct > 0.5 ? 'bg-emerald-400' : timerPct > 0.25 ? 'bg-amber-400' : 'bg-red-400';
 
   return (
@@ -118,7 +121,7 @@ export default function DicteeScreen({ word, wordIndex, totalWords, config, spea
       {/* Progress */}
       <div className="flex justify-between items-center mb-6 text-slate-500 font-medium">
         <span>Mot {wordIndex + 1} / {totalWords}</span>
-        {config.answerTimeSeconds > 0 && phase !== 'speaking' && (
+        {answerTimeSeconds > 0 && phase !== 'speaking' && (
           <span className={`font-mono text-lg font-bold ${timeLeft <= 5 ? 'text-red-500' : 'text-slate-700'}`}>
             {formatTime(timeLeft)}
           </span>
@@ -126,7 +129,7 @@ export default function DicteeScreen({ word, wordIndex, totalWords, config, spea
       </div>
 
       {/* Timer bar */}
-      {config.answerTimeSeconds > 0 && (
+      {answerTimeSeconds > 0 && (
         <div className="h-2 bg-slate-100 rounded-full mb-8 overflow-hidden">
           <div
             className={`h-full rounded-full transition-all ${timerColor}`}
@@ -242,7 +245,7 @@ export default function DicteeScreen({ word, wordIndex, totalWords, config, spea
           disabled={phase === 'paused'}
           className="mt-4 w-full bg-indigo-500 hover:bg-indigo-600 disabled:opacity-40 text-white font-semibold text-lg py-4 rounded-2xl transition-colors shadow-md shadow-indigo-200"
         >
-          {config.answerTimeSeconds === 0 ? 'Suivant →' : 'Valider ✓'}
+          {answerTimeSeconds === 0 ? 'Suivant →' : 'Valider ✓'}
         </button>
       )}
     </div>
