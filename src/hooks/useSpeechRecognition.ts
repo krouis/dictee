@@ -39,6 +39,10 @@ type SpeechRecognitionErrorEventLike = {
 
 type SpeechRecognitionConstructor = new () => RecognitionLike;
 
+type SpeechRecognitionOptions = {
+  continuous?: boolean;
+};
+
 function getRecognitionConstructor(): SpeechRecognitionConstructor | null {
   const candidate = window as unknown as {
     SpeechRecognition?: SpeechRecognitionConstructor;
@@ -72,6 +76,7 @@ export function useSpeechRecognition(
   language: string,
   phraseHints: string[] = [],
   onResult?: (result: ParsedSpelling) => void,
+  options: SpeechRecognitionOptions = {},
 ) {
   const supported = isSpeechRecognitionSupported(typeof window === 'undefined' ? undefined : window);
   const [status, setStatus] = useState<RecognitionStatus>(supported ? 'idle' : 'unsupported');
@@ -79,8 +84,10 @@ export function useSpeechRecognition(
   const [result, setResult] = useState<ParsedSpelling | null>(null);
   const [error, setError] = useState('');
   const recognitionRef = useRef<RecognitionLike | null>(null);
+  const shouldContinueRef = useRef(false);
 
   const reset = useCallback(() => {
+    shouldContinueRef.current = false;
     recognitionRef.current?.abort();
     recognitionRef.current = null;
     setTranscript('');
@@ -90,6 +97,7 @@ export function useSpeechRecognition(
   }, [supported]);
 
   const stop = useCallback(() => {
+    shouldContinueRef.current = false;
     const recognition = recognitionRef.current;
     if (!recognition) return;
     setStatus('processing');
@@ -104,12 +112,14 @@ export function useSpeechRecognition(
       return;
     }
 
+    shouldContinueRef.current = false;
     recognitionRef.current?.abort();
 
     const recognition = new Recognition();
     recognitionRef.current = recognition;
+    shouldContinueRef.current = options.continuous ?? false;
     recognition.lang = language;
-    recognition.continuous = false;
+    recognition.continuous = options.continuous ?? false;
     recognition.interimResults = true;
     recognition.maxAlternatives = 3;
     if ('phrases' in recognition && phraseHints.length > 0) {
@@ -124,17 +134,20 @@ export function useSpeechRecognition(
         const parsed = parseFrenchSpellingAlternatives(finalTranscripts);
         if (parsed) {
           setResult(parsed);
-          setStatus('result');
+          setStatus(options.continuous ? 'listening' : 'result');
           setError('');
           onResult?.(parsed);
         } else {
           setResult(null);
-          setStatus('error');
-          setError("Je n'ai pas reconnu une épellation complète.");
+          setStatus(options.continuous ? 'listening' : 'error');
+          setError(options.continuous
+            ? "Je n'ai pas reconnu cette lettre."
+            : "Je n'ai pas reconnu une épellation complète.");
         }
       }
     };
     recognition.onerror = (event) => {
+      shouldContinueRef.current = false;
       setStatus('error');
       setResult(null);
       setError(event.error === 'not-allowed'
@@ -143,6 +156,21 @@ export function useSpeechRecognition(
     };
     recognition.onend = () => {
       recognitionRef.current = null;
+      if (options.continuous && shouldContinueRef.current) {
+        setStatus('listening');
+        window.setTimeout(() => {
+          if (!shouldContinueRef.current) return;
+          recognitionRef.current = recognition;
+          try {
+            recognition.start();
+          } catch {
+            shouldContinueRef.current = false;
+            recognitionRef.current = null;
+            setStatus('idle');
+          }
+        }, 250);
+        return;
+      }
       setStatus((current) => {
         if (current === 'listening' || current === 'processing') return 'idle';
         return current;
@@ -156,11 +184,12 @@ export function useSpeechRecognition(
     try {
       recognition.start();
     } catch {
+      shouldContinueRef.current = false;
       recognitionRef.current = null;
       setStatus('error');
       setError('Impossible de démarrer le micro. Réessayez ou utilisez la correction manuelle.');
     }
-  }, [language, supported, phraseHints, onResult]);
+  }, [language, supported, phraseHints, onResult, options.continuous]);
 
   return {
     supported,

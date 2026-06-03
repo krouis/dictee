@@ -30,8 +30,8 @@ type Props = {
 type Phase = 'speaking' | 'answering' | 'paused';
 
 type OralSlot = {
-  expected: string;
-  actual?: string;
+  expected?: string;
+  actual: string;
   transcript?: string;
   grade?: CharacterGrade;
 };
@@ -62,46 +62,37 @@ export default function DicteeScreen({ word, wordIndex, totalWords, config, spea
   const [revealed, setRevealed] = useState(false);
   const [manualCorrection, setManualCorrection] = useState(false);
   const [oralNotice, setOralNotice] = useState('');
-  const [oralSlots, setOralSlots] = useState<OralSlot[]>(() => expectedCharacters.map((expected) => ({ expected })));
+  const [oralSlots, setOralSlots] = useState<OralSlot[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const answerRef = useRef('');
   const speechRunRef = useRef<SpeechRunToken | null>(null);
   answerRef.current = answer;
 
-  const currentOralIndex = oralSlots.findIndex((slot) => !slot.actual);
-  const currentExpected = currentOralIndex >= 0 ? oralSlots[currentOralIndex]?.expected : undefined;
-  const oralAnswer = oralSlots.map((slot) => slot.actual ?? '').join('');
-  const oralComplete = oralSlots.length > 0 && currentOralIndex === -1;
-  const hasOralAnswer = oralSlots.some((slot) => slot.actual);
+  const oralAnswer = oralSlots.map((slot) => slot.actual).join('');
+  const hasOralAnswer = oralSlots.length > 0;
   const recognitionHints = useMemo(
-    () => buildFrenchSpellingPhrases(currentExpected ?? word.expected),
-    [currentExpected, word.expected],
+    () => buildFrenchSpellingPhrases(word.expected),
+    [word.expected],
   );
 
   const handleLetterResult = useCallback((result: ParsedSpelling) => {
-    if (Array.from(result.parsed).length !== 1) {
-      setOralNotice('Une seule lettre à la fois. Réessayez.');
-      return;
-    }
-
     setOralSlots((slots) => {
-      const index = slots.findIndex((slot) => !slot.actual);
-      if (index === -1) return slots;
-
       const next = [...slots];
-      const expected = next[index].expected;
-      next[index] = {
-        expected,
-        actual: result.parsed,
-        transcript: result.transcript,
-        grade: gradeSpelledCharacter(expected, result.parsed),
-      };
+      for (const actual of Array.from(result.parsed)) {
+        const expected = expectedCharacters[next.length];
+        next.push({
+          expected,
+          actual,
+          transcript: result.transcript,
+          grade: expected ? gradeSpelledCharacter(expected, actual) : 'incorrect',
+        });
+      }
       return next;
     });
     setOralNotice('');
-  }, []);
+  }, [expectedCharacters]);
 
-  const recognition = useSpeechRecognition(config.language, recognitionHints, handleLetterResult);
+  const recognition = useSpeechRecognition(config.language, recognitionHints, handleLetterResult, { continuous: true });
 
   // Speak the current word, then start the timer.
   const doSpeak = useCallback(async (token: SpeechRunToken) => {
@@ -132,7 +123,7 @@ export default function DicteeScreen({ word, wordIndex, totalWords, config, spea
     setRevealed(false);
     setManualCorrection(false);
     setOralNotice('');
-    setOralSlots(expectedCharacters.map((expected) => ({ expected })));
+    setOralSlots([]);
     setTimeLeft(answerTimeSeconds);
     recognition.reset();
     doSpeak(token);
@@ -150,16 +141,10 @@ export default function DicteeScreen({ word, wordIndex, totalWords, config, spea
     }
   }, [phase, config.mode]);
 
-  useEffect(() => {
-    if (config.mode === 'oral' && recognition.result && !oralComplete) {
-      recognition.reset();
-    }
-  }, [config.mode, recognition.result, oralComplete]); // eslint-disable-line react-hooks/exhaustive-deps
-
   // Countdown timer.
   useEffect(() => {
     if (phase !== 'answering' || answerTimeSeconds === 0) return;
-    if (config.mode === 'oral' && (oralComplete || manualCorrection)) return;
+    if (config.mode === 'oral' && manualCorrection) return;
     if (timeLeft <= 0) {
       if (config.mode === 'oral') {
         recognition.stop();
@@ -171,7 +156,7 @@ export default function DicteeScreen({ word, wordIndex, totalWords, config, spea
     }
     const id = setTimeout(() => setTimeLeft((t) => t - 1), 1000);
     return () => clearTimeout(id);
-  }, [phase, timeLeft, answerTimeSeconds, config.mode, oralComplete, manualCorrection]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [phase, timeLeft, answerTimeSeconds, config.mode, manualCorrection]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleSubmit() {
     window.speechSynthesis?.cancel();
@@ -210,6 +195,7 @@ export default function DicteeScreen({ word, wordIndex, totalWords, config, spea
 
   function handleRecognitionRetry() {
     recognition.reset();
+    setOralSlots([]);
     setOralNotice('');
   }
 
@@ -226,7 +212,7 @@ export default function DicteeScreen({ word, wordIndex, totalWords, config, spea
       }
       if (index === -1) return slots;
       const next = [...slots];
-      next[index] = { expected: next[index].expected };
+      next.splice(index, 1);
       return next;
     });
   }
@@ -289,22 +275,26 @@ export default function DicteeScreen({ word, wordIndex, totalWords, config, spea
             <div className="space-y-4">
               <div className="bg-slate-50 border-2 border-slate-100 rounded-2xl p-4">
                 <div className="flex justify-between items-center gap-3 mb-3 text-sm font-semibold text-slate-500">
-                  <span>Lettre {oralComplete ? oralSlots.length : currentOralIndex + 1} / {oralSlots.length}</span>
-                  {oralComplete && <span className="text-green-700">Terminé</span>}
+                  <span>Lettres reconnues</span>
+                  {recognition.status === 'listening' && <span className="text-indigo-600">Micro actif</span>}
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {oralSlots.map((slot, index) => (
-                    <div
-                      // The word list may contain repeated letters, so index is the stable slot identity.
-                      key={index}
-                      className={`w-11 h-12 border-2 rounded-xl flex items-center justify-center text-2xl font-black ${
-                        SLOT_STYLE[slot.grade ?? 'empty']
-                      } ${index === currentOralIndex ? 'ring-2 ring-indigo-400 ring-offset-2' : ''}`}
-                    >
-                      {displayChar(slot.actual)}
-                    </div>
-                  ))}
-                </div>
+                {oralSlots.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {oralSlots.map((slot, index) => (
+                      <div
+                        // The spoken answer may contain repeated letters, so index is the stable slot identity.
+                        key={index}
+                        className={`w-11 h-12 border-2 rounded-xl flex items-center justify-center text-2xl font-black ${
+                          SLOT_STYLE[slot.grade ?? 'empty']
+                        }`}
+                      >
+                        {displayChar(slot.actual)}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-slate-400 font-medium">Aucune lettre reconnue pour le moment.</p>
+                )}
               </div>
 
               {!recognition.supported && (
@@ -323,14 +313,7 @@ export default function DicteeScreen({ word, wordIndex, totalWords, config, spea
                   <p className="text-2xl font-bold text-slate-700">{recognition.transcript}</p>
                 </div>
               )}
-              {oralComplete ? (
-                <button
-                  onClick={() => onAnswer(word.id, oralAnswer)}
-                  className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-bold text-lg py-4 rounded-2xl transition-colors"
-                >
-                  Valider
-                </button>
-              ) : recognition.status === 'listening' ? (
+              {recognition.status === 'listening' ? (
                 <button
                   onClick={recognition.stop}
                   className="w-full bg-red-100 hover:bg-red-200 text-red-700 font-bold text-2xl py-10 rounded-2xl transition-colors"
@@ -343,22 +326,29 @@ export default function DicteeScreen({ word, wordIndex, totalWords, config, spea
                   disabled={!recognition.supported}
                   className="w-full bg-indigo-500 hover:bg-indigo-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-2xl py-10 rounded-2xl transition-colors"
                 >
-                  🎙️ Épeler la lettre
+                  🎙️ Épeler le mot
                 </button>
               )}
+              <button
+                onClick={() => { recognition.stop(); onAnswer(word.id, oralAnswer); }}
+                disabled={!hasOralAnswer}
+                className="w-full bg-indigo-500 hover:bg-indigo-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-lg py-4 rounded-2xl transition-colors"
+              >
+                Valider
+              </button>
               <div className="flex gap-3">
                 <button
                   onClick={handleRecognitionRetry}
                   className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-lg py-4 rounded-2xl transition-colors"
                 >
-                  Réessayer
+                  Recommencer
                 </button>
                 <button
                   onClick={handleUndoLastLetter}
                   disabled={!hasOralAnswer}
                   className="flex-1 bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-700 font-semibold text-lg py-4 rounded-2xl transition-colors"
                 >
-                  Refaire la dernière
+                  Effacer la dernière
                 </button>
               </div>
               <button
