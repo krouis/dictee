@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import {
   isSpeechRecognitionSupported,
-  parseFrenchSpellingAlternatives,
+  parseAutonomousSpellingAlternatives,
   type ParsedSpelling,
 } from '../spellingRecognition';
 
@@ -131,7 +131,7 @@ export function useSpeechRecognition(
 
       if (finalTranscripts.length > 0) {
         setTranscript(finalTranscripts[0]);
-        const parsed = parseFrenchSpellingAlternatives(finalTranscripts);
+        const parsed = parseAutonomousSpellingAlternatives(finalTranscripts);
         if (parsed) {
           setResult(parsed);
           setStatus(options.continuous ? 'listening' : 'result');

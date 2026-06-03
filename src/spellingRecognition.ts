@@ -12,6 +12,10 @@ type BrowserSpeechRecognitionWindow = {
   webkitSpeechRecognition?: unknown;
 };
 
+type ParseOptions = {
+  allowBareLetterWords?: boolean;
+};
+
 const LETTERS: Record<string, string> = {
   a: 'a',
   ah: 'a',
@@ -137,6 +141,10 @@ const SEPARATORS: Record<string, string> = {
   tiret: '-',
 };
 
+const BARE_LETTER_WORDS = new Set(Object.entries(LETTERS)
+  .filter(([token, letter]) => token === letter)
+  .map(([token]) => token));
+
 function tokenize(transcript: string): string[] {
   return normaliseBasic(transcript)
     .replace(/[.,;:!?()[\]{}"]/g, ' ')
@@ -144,10 +152,11 @@ function tokenize(transcript: string): string[] {
     .filter(Boolean);
 }
 
-function parseLetter(tokens: string[], index: number): { value: string; next: number } | null {
+function parseLetter(tokens: string[], index: number, options: ParseOptions = {}): { value: string; next: number } | null {
   const token = tokens[index];
   const next = tokens[index + 1];
   const third = tokens[index + 2];
+  const allowBareLetterWords = options.allowBareLetterWords ?? true;
 
   if (!token) return null;
   if (token === 'i' && next === 'grec') return { value: 'y', next: index + 2 };
@@ -162,6 +171,9 @@ function parseLetter(tokens: string[], index: number): { value: string; next: nu
     return { value: 'ç', next: index + 2 };
   }
   if (SEPARATORS[token]) return { value: SEPARATORS[token], next: index + 1 };
+  if (!allowBareLetterWords && BARE_LETTER_WORDS.has(token)) {
+    return token.length === 1 ? { value: token, next: index + 1 } : null;
+  }
   if (LETTERS[token]) return { value: LETTERS[token], next: index + 1 };
 
   return null;
@@ -179,13 +191,16 @@ function applyAccent(letter: string, tokens: string[], index: number): { value: 
   return { value: accented, next: index + 2 };
 }
 
-export function parseFrenchSpellingTranscript(transcript: string): ParsedSpelling | null {
+function parseFrenchSpellingTranscriptWithOptions(
+  transcript: string,
+  options: ParseOptions = {},
+): ParsedSpelling | null {
   const tokens = tokenize(transcript);
   let index = 0;
   let parsed = '';
 
   while (index < tokens.length) {
-    const letter = parseLetter(tokens, index);
+    const letter = parseLetter(tokens, index, options);
     if (!letter) return null;
 
     const accented = applyAccent(letter.value, tokens, letter.next);
@@ -196,9 +211,25 @@ export function parseFrenchSpellingTranscript(transcript: string): ParsedSpellin
   return parsed ? { transcript, parsed } : null;
 }
 
+export function parseFrenchSpellingTranscript(transcript: string): ParsedSpelling | null {
+  return parseFrenchSpellingTranscriptWithOptions(transcript);
+}
+
 export function parseFrenchSpellingAlternatives(transcripts: string[]): ParsedSpelling | null {
   for (const transcript of transcripts) {
     const parsed = parseFrenchSpellingTranscript(transcript);
+    if (parsed) return parsed;
+  }
+  return null;
+}
+
+export function parseAutonomousSpellingTranscript(transcript: string): ParsedSpelling | null {
+  return parseFrenchSpellingTranscriptWithOptions(transcript, { allowBareLetterWords: false });
+}
+
+export function parseAutonomousSpellingAlternatives(transcripts: string[]): ParsedSpelling | null {
+  for (const transcript of transcripts) {
+    const parsed = parseAutonomousSpellingTranscript(transcript);
     if (parsed) return parsed;
   }
   return null;

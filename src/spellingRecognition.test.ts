@@ -4,6 +4,8 @@ import {
   buildFrenchSpellingPhrases,
   gradeSpelledCharacter,
   isSpeechRecognitionSupported,
+  parseAutonomousSpellingAlternatives,
+  parseAutonomousSpellingTranscript,
   parseFrenchSpellingAlternatives,
   parseFrenchSpellingTranscript,
   splitExpectedCharacters,
@@ -39,6 +41,19 @@ test('parseFrenchSpellingAlternatives returns the first parseable transcript', (
   assert.deepEqual(parseFrenchSpellingAlternatives(['inconnu', 'bé o enne']), {
     transcript: 'bé o enne',
     parsed: 'bon',
+  });
+});
+
+test('parseAutonomousSpellingTranscript accepts explicit letter names but rejects word-like transcripts', () => {
+  assert.equal(parseAutonomousSpellingTranscript('em a i esse o n')?.parsed, 'maison');
+  assert.equal(parseAutonomousSpellingTranscript('maison'), null);
+  assert.equal(parseAutonomousSpellingTranscript('MAIF'), null);
+});
+
+test('parseAutonomousSpellingAlternatives ignores phonetic words and uses spelled alternatives', () => {
+  assert.deepEqual(parseAutonomousSpellingAlternatives(['maison', 'em a i esse o n']), {
+    transcript: 'em a i esse o n',
+    parsed: 'maison',
   });
 });
 
