@@ -13,7 +13,7 @@ No account, no backend, no paid dependency.
 
 - Enter any word list (one word or phrase per line)
 - Configurable repetitions (1–3×), fixed/adaptive/manual answer timer, speech rate, and voice
-- Full keyboard mode **or** autonomous microphone spelling mode with manual fallback
+- Full keyboard mode **or** autonomous microphone spelling mode with letter-by-letter feedback and manual fallback
 - Pastel colour-coded correction: correct · accent issue · incorrect
 - Replay only missed words until every word has been written correctly at least once
 - Installable PWA — works fully offline after the first load
@@ -48,7 +48,7 @@ Current coverage focuses on:
 - PWA manifest icon paths staying relative, so GitHub Pages sub-path installs resolve icons correctly.
 - Dictation speech-run cancellation, so repeated “Réécouter” clicks cannot leave older speech loops racing the latest one.
 - Adaptive answer timing, including short-word minimums, phrase scaling, and the long-sentence cap.
-- French letter-name spelling recognition, including accents, separators, unsupported-browser detection, and grading integration.
+- French letter-name spelling recognition, including per-letter grading, accents, separators, unsupported-browser detection, and grading integration.
 
 ## Deployment
 

@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import type { WordEntry, DicteeConfig } from '../types';
 import type { SpeakOptions } from '../hooks/useSpeech';
-import { gradeAnswer, stripAccents, normaliseBasic } from '../grading';
+import { stripAccents, normaliseBasic } from '../grading';
 import {
   cancelSpeechRun,
   createSpeechRunToken,
@@ -10,6 +10,13 @@ import {
 } from '../speechRun';
 import { resolveAnswerTimeSeconds } from '../timing';
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
+import {
+  buildFrenchSpellingPhrases,
+  gradeSpelledCharacter,
+  splitExpectedCharacters,
+  type CharacterGrade,
+  type ParsedSpelling,
+} from '../spellingRecognition';
 
 type Props = {
   word: WordEntry;
@@ -22,23 +29,79 @@ type Props = {
 
 type Phase = 'speaking' | 'answering' | 'paused';
 
+type OralSlot = {
+  expected: string;
+  actual?: string;
+  transcript?: string;
+  grade?: CharacterGrade;
+};
+
 function formatTime(s: number) {
   return `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
 }
 
+function displayChar(value: string | undefined) {
+  if (!value) return '·';
+  if (value === ' ') return '␠';
+  return value;
+}
+
+const SLOT_STYLE: Record<CharacterGrade | 'empty', string> = {
+  correct: 'bg-green-100 border-green-300 text-green-800',
+  almost_correct: 'bg-amber-100 border-amber-300 text-amber-800',
+  incorrect: 'bg-red-100 border-red-300 text-red-800',
+  empty: 'bg-slate-50 border-slate-200 text-slate-300',
+};
+
 export default function DicteeScreen({ word, wordIndex, totalWords, config, speak, onAnswer }: Props) {
   const answerTimeSeconds = resolveAnswerTimeSeconds(config.answerTimeSeconds, word.expected);
-  const recognition = useSpeechRecognition(config.language);
+  const expectedCharacters = useMemo(() => splitExpectedCharacters(word.expected), [word.expected]);
   const [phase, setPhase] = useState<Phase>('speaking');
   const [timeLeft, setTimeLeft] = useState(answerTimeSeconds);
   const [answer, setAnswer] = useState('');
   const [revealed, setRevealed] = useState(false);
   const [manualCorrection, setManualCorrection] = useState(false);
   const [oralNotice, setOralNotice] = useState('');
+  const [oralSlots, setOralSlots] = useState<OralSlot[]>(() => expectedCharacters.map((expected) => ({ expected })));
   const inputRef = useRef<HTMLInputElement>(null);
   const answerRef = useRef('');
   const speechRunRef = useRef<SpeechRunToken | null>(null);
   answerRef.current = answer;
+
+  const currentOralIndex = oralSlots.findIndex((slot) => !slot.actual);
+  const currentExpected = currentOralIndex >= 0 ? oralSlots[currentOralIndex]?.expected : undefined;
+  const oralAnswer = oralSlots.map((slot) => slot.actual ?? '').join('');
+  const oralComplete = oralSlots.length > 0 && currentOralIndex === -1;
+  const hasOralAnswer = oralSlots.some((slot) => slot.actual);
+  const recognitionHints = useMemo(
+    () => buildFrenchSpellingPhrases(currentExpected ?? word.expected),
+    [currentExpected, word.expected],
+  );
+
+  const handleLetterResult = useCallback((result: ParsedSpelling) => {
+    if (Array.from(result.parsed).length !== 1) {
+      setOralNotice('Une seule lettre à la fois. Réessayez.');
+      return;
+    }
+
+    setOralSlots((slots) => {
+      const index = slots.findIndex((slot) => !slot.actual);
+      if (index === -1) return slots;
+
+      const next = [...slots];
+      const expected = next[index].expected;
+      next[index] = {
+        expected,
+        actual: result.parsed,
+        transcript: result.transcript,
+        grade: gradeSpelledCharacter(expected, result.parsed),
+      };
+      return next;
+    });
+    setOralNotice('');
+  }, []);
+
+  const recognition = useSpeechRecognition(config.language, recognitionHints, handleLetterResult);
 
   // Speak the current word, then start the timer.
   const doSpeak = useCallback(async (token: SpeechRunToken) => {
@@ -69,6 +132,7 @@ export default function DicteeScreen({ word, wordIndex, totalWords, config, spea
     setRevealed(false);
     setManualCorrection(false);
     setOralNotice('');
+    setOralSlots(expectedCharacters.map((expected) => ({ expected })));
     setTimeLeft(answerTimeSeconds);
     recognition.reset();
     doSpeak(token);
@@ -86,10 +150,16 @@ export default function DicteeScreen({ word, wordIndex, totalWords, config, spea
     }
   }, [phase, config.mode]);
 
+  useEffect(() => {
+    if (config.mode === 'oral' && recognition.result && !oralComplete) {
+      recognition.reset();
+    }
+  }, [config.mode, recognition.result, oralComplete]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Countdown timer.
   useEffect(() => {
     if (phase !== 'answering' || answerTimeSeconds === 0) return;
-    if (config.mode === 'oral' && (recognition.result || manualCorrection)) return;
+    if (config.mode === 'oral' && (oralComplete || manualCorrection)) return;
     if (timeLeft <= 0) {
       if (config.mode === 'oral') {
         recognition.stop();
@@ -101,7 +171,7 @@ export default function DicteeScreen({ word, wordIndex, totalWords, config, spea
     }
     const id = setTimeout(() => setTimeLeft((t) => t - 1), 1000);
     return () => clearTimeout(id);
-  }, [phase, timeLeft, answerTimeSeconds, config.mode, recognition.result, manualCorrection]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [phase, timeLeft, answerTimeSeconds, config.mode, oralComplete, manualCorrection]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleSubmit() {
     window.speechSynthesis?.cancel();
@@ -141,6 +211,24 @@ export default function DicteeScreen({ word, wordIndex, totalWords, config, spea
   function handleRecognitionRetry() {
     recognition.reset();
     setOralNotice('');
+  }
+
+  function handleUndoLastLetter() {
+    recognition.reset();
+    setOralNotice('');
+    setOralSlots((slots) => {
+      let index = -1;
+      for (let i = slots.length - 1; i >= 0; i--) {
+        if (slots[i].actual) {
+          index = i;
+          break;
+        }
+      }
+      if (index === -1) return slots;
+      const next = [...slots];
+      next[index] = { expected: next[index].expected };
+      return next;
+    });
   }
 
   const timerPct = answerTimeSeconds > 0 ? timeLeft / answerTimeSeconds : 1;
@@ -199,77 +287,80 @@ export default function DicteeScreen({ word, wordIndex, totalWords, config, spea
         <div className="mb-6">
           {!manualCorrection ? (
             <div className="space-y-4">
-              {recognition.result ? (
-                <div className="border-2 border-slate-200 rounded-2xl p-5 bg-slate-50">
-                  <div className="flex justify-between items-center gap-3 mb-4">
-                    <span className="text-sm font-semibold text-slate-500">Épellation reconnue</span>
-                    <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
-                      gradeAnswer(word.expected, recognition.result.parsed) === 'correct'
-                        ? 'bg-green-100 text-green-700'
-                        : gradeAnswer(word.expected, recognition.result.parsed) === 'almost_correct'
-                          ? 'bg-amber-100 text-amber-700'
-                          : 'bg-red-100 text-red-700'
-                    }`}>
-                      {gradeAnswer(word.expected, recognition.result.parsed) === 'correct'
-                        ? 'Correct'
-                        : gradeAnswer(word.expected, recognition.result.parsed) === 'almost_correct'
-                          ? 'Presque'
-                          : 'Incorrect'}
-                    </span>
-                  </div>
-                  <p className="text-sm text-slate-500 mb-2">Entendu : {recognition.result.transcript}</p>
-                  <p className="text-4xl font-bold text-slate-800">{recognition.result.parsed}</p>
-                  <div className="flex gap-3 mt-5">
-                    <button
-                      onClick={handleRecognitionRetry}
-                      className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-lg py-4 rounded-2xl transition-colors"
-                    >
-                      Réessayer
-                    </button>
-                    <button
-                      onClick={() => onAnswer(word.id, recognition.result?.parsed ?? '')}
-                      className="flex-1 bg-indigo-500 hover:bg-indigo-600 text-white font-bold text-lg py-4 rounded-2xl transition-colors"
-                    >
-                      Valider
-                    </button>
-                  </div>
+              <div className="bg-slate-50 border-2 border-slate-100 rounded-2xl p-4">
+                <div className="flex justify-between items-center gap-3 mb-3 text-sm font-semibold text-slate-500">
+                  <span>Lettre {oralComplete ? oralSlots.length : currentOralIndex + 1} / {oralSlots.length}</span>
+                  {oralComplete && <span className="text-green-700">Terminé</span>}
                 </div>
-              ) : (
-                <>
-                  {!recognition.supported && (
-                    <div className="bg-amber-50 border-2 border-amber-100 text-amber-800 rounded-2xl p-4 font-medium">
-                      Micro indisponible sur ce navigateur.
-                    </div>
-                  )}
-                  {(recognition.error || oralNotice) && (
-                    <div className="bg-amber-50 border-2 border-amber-100 text-amber-800 rounded-2xl p-4 font-medium">
-                      {oralNotice || recognition.error}
-                    </div>
-                  )}
-                  {recognition.transcript && (
-                    <div className="bg-slate-50 border-2 border-slate-100 rounded-2xl p-4">
-                      <p className="text-sm font-semibold text-slate-400 mb-1">Entendu</p>
-                      <p className="text-2xl font-bold text-slate-700">{recognition.transcript}</p>
-                    </div>
-                  )}
-                  {recognition.status === 'listening' ? (
-                    <button
-                      onClick={recognition.stop}
-                      className="w-full bg-red-100 hover:bg-red-200 text-red-700 font-bold text-2xl py-10 rounded-2xl transition-colors"
+                <div className="flex flex-wrap gap-2">
+                  {oralSlots.map((slot, index) => (
+                    <div
+                      // The word list may contain repeated letters, so index is the stable slot identity.
+                      key={index}
+                      className={`w-11 h-12 border-2 rounded-xl flex items-center justify-center text-2xl font-black ${
+                        SLOT_STYLE[slot.grade ?? 'empty']
+                      } ${index === currentOralIndex ? 'ring-2 ring-indigo-400 ring-offset-2' : ''}`}
                     >
-                      Arrêter le micro
-                    </button>
-                  ) : (
-                    <button
-                      onClick={handleRecognitionStart}
-                      disabled={!recognition.supported}
-                      className="w-full bg-indigo-500 hover:bg-indigo-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-2xl py-10 rounded-2xl transition-colors"
-                    >
-                      🎙️ Épeler le mot
-                    </button>
-                  )}
-                </>
+                      {displayChar(slot.actual)}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {!recognition.supported && (
+                <div className="bg-amber-50 border-2 border-amber-100 text-amber-800 rounded-2xl p-4 font-medium">
+                  Micro indisponible sur ce navigateur.
+                </div>
               )}
+              {(recognition.error || oralNotice) && (
+                <div className="bg-amber-50 border-2 border-amber-100 text-amber-800 rounded-2xl p-4 font-medium">
+                  {oralNotice || recognition.error}
+                </div>
+              )}
+              {recognition.transcript && (
+                <div className="bg-slate-50 border-2 border-slate-100 rounded-2xl p-4">
+                  <p className="text-sm font-semibold text-slate-400 mb-1">Entendu</p>
+                  <p className="text-2xl font-bold text-slate-700">{recognition.transcript}</p>
+                </div>
+              )}
+              {oralComplete ? (
+                <button
+                  onClick={() => onAnswer(word.id, oralAnswer)}
+                  className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-bold text-lg py-4 rounded-2xl transition-colors"
+                >
+                  Valider
+                </button>
+              ) : recognition.status === 'listening' ? (
+                <button
+                  onClick={recognition.stop}
+                  className="w-full bg-red-100 hover:bg-red-200 text-red-700 font-bold text-2xl py-10 rounded-2xl transition-colors"
+                >
+                  Arrêter le micro
+                </button>
+              ) : (
+                <button
+                  onClick={handleRecognitionStart}
+                  disabled={!recognition.supported}
+                  className="w-full bg-indigo-500 hover:bg-indigo-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-2xl py-10 rounded-2xl transition-colors"
+                >
+                  🎙️ Épeler la lettre
+                </button>
+              )}
+              <div className="flex gap-3">
+                <button
+                  onClick={handleRecognitionRetry}
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-lg py-4 rounded-2xl transition-colors"
+                >
+                  Réessayer
+                </button>
+                <button
+                  onClick={handleUndoLastLetter}
+                  disabled={!hasOralAnswer}
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-700 font-semibold text-lg py-4 rounded-2xl transition-colors"
+                >
+                  Refaire la dernière
+                </button>
+              </div>
               <button
                 onClick={handleManualCorrection}
                 className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-lg py-4 rounded-2xl transition-colors"

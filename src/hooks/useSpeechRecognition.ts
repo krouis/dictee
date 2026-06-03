@@ -12,6 +12,7 @@ type RecognitionLike = {
   continuous: boolean;
   interimResults: boolean;
   maxAlternatives: number;
+  phrases?: { phrase: string; boost: number }[];
   onresult: ((event: SpeechRecognitionResultEventLike) => void) | null;
   onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
   onend: (() => void) | null;
@@ -67,7 +68,11 @@ function collectAlternatives(event: SpeechRecognitionResultEventLike): {
   return { interimTranscript, finalTranscripts };
 }
 
-export function useSpeechRecognition(language: string) {
+export function useSpeechRecognition(
+  language: string,
+  phraseHints: string[] = [],
+  onResult?: (result: ParsedSpelling) => void,
+) {
   const supported = isSpeechRecognitionSupported(typeof window === 'undefined' ? undefined : window);
   const [status, setStatus] = useState<RecognitionStatus>(supported ? 'idle' : 'unsupported');
   const [transcript, setTranscript] = useState('');
@@ -107,6 +112,9 @@ export function useSpeechRecognition(language: string) {
     recognition.continuous = false;
     recognition.interimResults = true;
     recognition.maxAlternatives = 3;
+    if ('phrases' in recognition && phraseHints.length > 0) {
+      recognition.phrases = phraseHints.map((phrase) => ({ phrase, boost: 10 }));
+    }
     recognition.onresult = (event) => {
       const { interimTranscript, finalTranscripts } = collectAlternatives(event);
       if (interimTranscript) setTranscript(interimTranscript);
@@ -118,6 +126,7 @@ export function useSpeechRecognition(language: string) {
           setResult(parsed);
           setStatus('result');
           setError('');
+          onResult?.(parsed);
         } else {
           setResult(null);
           setStatus('error');
@@ -151,7 +160,7 @@ export function useSpeechRecognition(language: string) {
       setStatus('error');
       setError('Impossible de démarrer le micro. Réessayez ou utilisez la correction manuelle.');
     }
-  }, [language, supported]);
+  }, [language, supported, phraseHints, onResult]);
 
   return {
     supported,

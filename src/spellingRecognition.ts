@@ -5,6 +5,8 @@ export type ParsedSpelling = {
   parsed: string;
 };
 
+export type CharacterGrade = 'correct' | 'almost_correct' | 'incorrect';
+
 type BrowserSpeechRecognitionWindow = {
   SpeechRecognition?: unknown;
   webkitSpeechRecognition?: unknown;
@@ -42,9 +44,14 @@ const LETTERS: Record<string, string> = {
   elle: 'l',
   m: 'm',
   aime: 'm',
+  em: 'm',
+  eme: 'm',
+  ème: 'm',
   n: 'n',
+  en: 'n',
   haine: 'n',
   enne: 'n',
+  ène: 'n',
   o: 'o',
   eau: 'o',
   p: 'p',
@@ -56,6 +63,7 @@ const LETTERS: Record<string, string> = {
   r: 'r',
   erre: 'r',
   s: 's',
+  es: 's',
   esse: 's',
   t: 't',
   te: 't',
@@ -71,6 +79,48 @@ const LETTERS: Record<string, string> = {
   z: 'z',
   zed: 'z',
   zède: 'z',
+};
+
+const LETTER_HINTS: Record<string, string> = {
+  a: 'a',
+  b: 'bé',
+  c: 'cé',
+  d: 'dé',
+  e: 'e',
+  f: 'effe',
+  g: 'gé',
+  h: 'ache',
+  i: 'i',
+  j: 'ji',
+  k: 'ka',
+  l: 'elle',
+  m: 'em',
+  n: 'enne',
+  o: 'o',
+  p: 'pé',
+  q: 'qu',
+  r: 'erre',
+  s: 'esse',
+  t: 'té',
+  u: 'u',
+  v: 'vé',
+  w: 'double vé',
+  x: 'ix',
+  y: 'i grec',
+  z: 'zède',
+  à: 'a accent grave',
+  â: 'a accent circonflexe',
+  ç: 'c cédille',
+  é: 'e accent aigu',
+  è: 'e accent grave',
+  ê: 'e accent circonflexe',
+  ë: 'e tréma',
+  î: 'i accent circonflexe',
+  ï: 'i tréma',
+  ô: 'o accent circonflexe',
+  ù: 'u accent grave',
+  û: 'u accent circonflexe',
+  ü: 'u tréma',
 };
 
 const ACCENTS: Record<string, Record<string, string>> = {
@@ -152,6 +202,37 @@ export function parseFrenchSpellingAlternatives(transcripts: string[]): ParsedSp
     if (parsed) return parsed;
   }
   return null;
+}
+
+export function gradeSpelledCharacter(expected: string, actual: string): CharacterGrade {
+  if (actual === expected) return 'correct';
+  if (normaliseBasic(actual).normalize('NFD').replace(/[̀-ͯ]/g, '')
+    === normaliseBasic(expected).normalize('NFD').replace(/[̀-ͯ]/g, '')) {
+    return 'almost_correct';
+  }
+  return 'incorrect';
+}
+
+export function splitExpectedCharacters(expected: string): string[] {
+  return Array.from(expected);
+}
+
+export function buildFrenchSpellingPhrases(expected: string): string[] {
+  const letters = normaliseBasic(expected)
+    .split('')
+    .map((char) => {
+      if (char === ' ') return 'espace';
+      if (char === "'") return 'apostrophe';
+      if (char === '-') return 'tiret';
+      return LETTER_HINTS[char] ?? '';
+    })
+    .filter(Boolean);
+
+  if (letters.length === 0) return [];
+
+  const phrase = letters.join(' ');
+  const compact = phrase.replace(/\s+/g, ' ');
+  return Array.from(new Set([phrase, compact]));
 }
 
 export function isSpeechRecognitionSupported(source: unknown = globalThis): boolean {
